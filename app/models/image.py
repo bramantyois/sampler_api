@@ -1,17 +1,17 @@
 import os
-import datetime
 import requests
 import time
 import uuid
 import json
-import boto3
+from botocore.exceptions import NoCredentialsError, ClientError
 import hashlib
+from dotenv import load_dotenv
+
 from typing import Optional, List, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 
-from models.request import Request
-from models.response import Response
+from app.utils.aws_utils import get_s3_resource, upload_file, download_file
 
 
 class BaseImage(BaseModel):
@@ -43,6 +43,7 @@ class GenerateImagesRequest(BaseModel):
     inference_steps: Optional[int]
     num_images: Optional[int]
     seed: Optional[int]
+    filenames: Optional[List[str]]
 
     @validator("vector", allow_reuse=True)
     def vector_length(cls, v):
@@ -58,37 +59,41 @@ class InferenceParameters(BaseModel):
     seed: Optional[int] = 42
 
 
-class ImageProvider(BaseModel):
+class ImageProvider():
     def __init__(
         self,
         style: List[int],
         prompt: str,
-        infer_params: InferenceParameters,
-    ):
-        self.infer_params = infer_params
+        inference_parameters: InferenceParameters,):
+       
+        self.inference_parameters = inference_parameters
         self.style = style
         self.prompt = prompt
-        self.s3 = boto3.client("s3")
-        self.bucket_name = "your-bucket-name"
+        self.s3 = get_s3_resource()
+        self.bucket_name = os.getenv('S3_BUCKET_NAME')
+        self.backend_url = os.getenv('BACKEND_URL')
         self.file_key = self.calculate_hash_key()
         self.metadata = self.check_metadata()
         if self.metadata is None:
-            self.schedule(style, prompt, self.infer_params)
+            self.schedule()
 
     def calculate_hash_key(self):
         hash_obj = hashlib.sha256()
         hash_obj.update(json.dumps(self.style).encode())
         hash_obj.update(self.prompt.encode())
-        hash_obj.update(json.dumps(self.infer_params.dict()).encode())
+        hash_obj.update(json.dumps(self.inference_parameters.dict()).encode())
         return hash_obj.hexdigest()
 
     def check_metadata(self):
+        # # check if .tmp folder exists
+        # if not os.path.exists(".tmp"):
+        #     os.mkdir(".tmp")
+
         try:
-            self.s3.download_file(
-                self.bucket_name, f"{self.file_key}.json", "/tmp/metadata.json"
-            )
-            with open("/tmp/metadata.json") as f:
-                metadata_dict = json.load(f)
+            download_file(f"{self.file_key}.json", f"/tmp/{self.file_key}.json")
+            
+            with open(f"/tmp/{self.file_key}.json") as json_file:
+                metadata_dict = json.load(json_file)
             return Image(**metadata_dict)
         except NoCredentialsError:
             print("No AWS credentials found.")
@@ -102,16 +107,20 @@ class ImageProvider(BaseModel):
         except Exception as e:
             return False
 
-    def schedule(self, style, prompt, infer_params):
+    #def schedule(self, style, prompt, infer_params):
+    def schedule(self,):
         if self.metadata is not None:
             print("Already scheduled, metadata exists in S3.")
             return
 
         request = GenerateImagesRequest(
-            prompt=prompt, vector=style, **infer_params.dict()
+            prompt=self.prompt, 
+            vector=self.style,
+            filenames=[self.file_key], 
+            **self.inference_parameters.dict()
         )
         response = requests.post(
-            f"{BACKEND_URL}/generate/test-user/",
+            f"{self.backend_url}/generate/test-user/",
             json=request.dict(),
         )
         print("response schedule", response)
@@ -119,22 +128,26 @@ class ImageProvider(BaseModel):
 
         # Saving metadata to s3
         self.metadata = Image(
-            url=self.get_s3_image_url(),
+            url=self.get_s3_image_url(response),
             style_id=self.file_key,
-            prompt=prompt,
+            prompt=self.prompt,
             batch_idx=0,
-            inference_parameters=infer_params.dict(),
+            inference_parameters=self.inference_parameters.dict(),
         )
-        with open("/tmp/metadata.json", "w") as f:
-            json.dump(self.metadata.dict(), f)
-        self.s3.upload_file(
-            "/tmp/metadata.json", self.bucket_name, f"{self.file_key}.json"
-        )
+        
+        with open(f"/tmp/{self.file_key}.json", "w") as json_file:
+            json.dump(self.metadata.dict(), json_file)
+
+        with open(f"/tmp/{self.file_key}.json", "rb") as json_file:
+            upload_file(json_file, f"{self.file_key}.json")
 
         print("response schedule", response, self.file_key)
 
-    def get_s3_image_url(self):
+    def get_s3_image_url(self, response):
         return f"https://{self.bucket_name}.s3.amazonaws.com/{self.file_key}.png"
+    
+    def get_s3_metadata_url(self):
+        return f"https://{self.bucket_name}.s3.amazonaws.com/{self.file_key}.json"
 
     def get_image(self):
         if not self.check_image_ready():
@@ -146,3 +159,6 @@ class ImageProvider(BaseModel):
         while not self.check_image_ready():
             time.sleep(0.5)
         return self.get_image()
+
+
+    
