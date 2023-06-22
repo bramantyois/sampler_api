@@ -5,7 +5,7 @@ from typing import List, Optional, Union
 # sampler
 def sample(
     n_hist_artists: int,
-    weights: Union[None, np.ndarray] = None, 
+    weights: Union[None, np.ndarray, List[float]] = None, 
     std: float = 0.01, 
     n_dim_to_keep: int = 8,)->np.ndarray:
     """
@@ -28,6 +28,8 @@ def sample(
     if weights is None:
         should_sample_new=True
     else:
+        if isinstance(weights, list):
+            weights = np.array(weights).reshape(1, -1)
         # raise error if weights length is not equal to embeddings length
         if weights.shape[-1] != n_hist_artists:
             #logger.error("weights length is not equal to embeddings length")

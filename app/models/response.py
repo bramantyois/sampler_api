@@ -3,5 +3,6 @@ from typing import List, Union
 
 class Response(BaseModel):
     request_id: str
-    vector: List[float]
+    weights: List[float]
+    style_vector: List[float]
     url: str

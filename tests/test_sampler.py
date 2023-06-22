@@ -1,6 +1,7 @@
 import numpy as np
 from app.sampler.sampler import sample
 
+
 def test_sampler():
     n_dim_to_keep = np.random.randint(1, 10)
     n_hist_artists = np.random.randint(11, 20)

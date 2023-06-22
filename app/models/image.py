@@ -11,7 +11,7 @@ from typing import Optional, List, Literal
 
 from pydantic import BaseModel, validator
 
-from app.utils.aws_utils import get_s3_resource, upload_file, download_file
+from app.utils.aws_utils import get_s3_resource, upload_json, download_file
 
 
 class BaseImage(BaseModel):
@@ -74,6 +74,7 @@ class ImageProvider():
         self.backend_url = os.getenv('BACKEND_URL')
         self.file_key = self.calculate_hash_key()
         self.metadata = self.check_metadata()
+        self.meta_url = None
         if self.metadata is None:
             self.schedule()
 
@@ -85,15 +86,14 @@ class ImageProvider():
         return hash_obj.hexdigest()
 
     def check_metadata(self):
-        # # check if .tmp folder exists
-        # if not os.path.exists(".tmp"):
-        #     os.mkdir(".tmp")
-
         try:
             download_file(f"{self.file_key}.json", f"/tmp/{self.file_key}.json")
             
-            with open(f"/tmp/{self.file_key}.json") as json_file:
+            with open(f"/tmp/{self.file_key}.json", 'r') as json_file:
                 metadata_dict = json.load(json_file)
+
+            self.meta_url = f"https://{self.bucket_name}.s3.amazonaws.com/{self.file_key}.json"
+            
             return Image(**metadata_dict)
         except NoCredentialsError:
             print("No AWS credentials found.")
@@ -128,26 +128,19 @@ class ImageProvider():
 
         # Saving metadata to s3
         self.metadata = Image(
-            url=self.get_s3_image_url(response),
+            url=self.get_s3_image_url(),
             style_id=self.file_key,
             prompt=self.prompt,
             batch_idx=0,
             inference_parameters=self.inference_parameters.dict(),
         )
         
-        with open(f"/tmp/{self.file_key}.json", "w") as json_file:
-            json.dump(self.metadata.dict(), json_file)
-
-        with open(f"/tmp/{self.file_key}.json", "rb") as json_file:
-            upload_file(json_file, f"{self.file_key}.json")
+        self.meta_url = upload_json(self.metadata.dict(), f"{self.file_key}.json")
 
         print("response schedule", response, self.file_key)
 
-    def get_s3_image_url(self, response):
+    def get_s3_image_url(self):
         return f"https://{self.bucket_name}.s3.amazonaws.com/{self.file_key}.png"
-    
-    def get_s3_metadata_url(self):
-        return f"https://{self.bucket_name}.s3.amazonaws.com/{self.file_key}.json"
 
     def get_image(self):
         if not self.check_image_ready():

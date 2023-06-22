@@ -1,5 +1,7 @@
 import os
 
+import json
+
 import logging
 import uuid
 
@@ -8,10 +10,11 @@ from botocore.exceptions import ClientError
 #logger = logging.getLogger(__name__)
 
 
-def upload_file(file, file_name):
+def upload_file(file, file_name=None):
     """Upload a file to an S3 bucket
 
-    :param file: File to upload
+    :param file: File to upload in binary mode
+    :param file_name: S3 object name. If not specified then file_name is used
     """
 
     s3 = get_s3_resource()
@@ -19,7 +22,8 @@ def upload_file(file, file_name):
     # check if bucket exists
     bucket = get_bucket(bucket_name, s3)
 
-    #file_name = f'{str(uuid.uuid4())}.png'
+    if file_name is None:
+        file_name = f'{str(uuid.uuid4())}.txt'
 
     try:
         bucket.put_object(
@@ -30,10 +34,35 @@ def upload_file(file, file_name):
         url = f'https://{bucket_name}.s3.amazonaws.com/{file_name}'
         return url
     except Exception as e:
-        # log the error
-        #logger.error(e, exc_info=True)
         return False
 
+
+def upload_json(json_dict, file_name=None):
+    """Upload a json file to an S3 bucket
+
+    :param json_dict: json dict to upload
+    :param file_name: S3 object name. If not specified then file_name is used
+    """
+
+    s3 = get_s3_resource()
+    bucket_name = os.getenv('S3_BUCKET_NAME')
+    # check if bucket exists
+    bucket = get_bucket(bucket_name, s3)
+
+    if file_name is None:
+        file_name = f'{str(uuid.uuid4())}.json'
+
+    try:
+        bucket.put_object(
+            Body=(bytes(json.dumps(json_dict).encode('UTF-8'))),
+            Key=file_name,
+            ACL='public-read'
+        )
+        url = f'https://{bucket_name}.s3.amazonaws.com/{file_name}'
+        return url
+    except Exception as e:
+        return False
+    
 
 def download_file(file_key, file_name):
     s3 = get_s3_resource()
@@ -51,6 +80,7 @@ def download_file(file_key, file_name):
             print("The object does not exist.")
         else:
             raise
+
 
 def get_bucket(bucket_name, s3):
     if bucket_name not in [bucket.name for bucket in s3.buckets.all()]:
