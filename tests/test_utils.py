@@ -9,9 +9,7 @@ from app.utils.aws_utils import download_file, upload_json
 import random
 
 
-load_dotenv('hf.env')
-load_dotenv('aws.env')
-load_dotenv('backend.env')
+load_dotenv()
 
 def test_upload_download():
     # some random number

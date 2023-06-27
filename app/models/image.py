@@ -11,7 +11,7 @@ from typing import Optional, List, Literal
 
 from pydantic import BaseModel, validator
 
-from app.utils.aws_utils import get_s3_resource, upload_json, download_file
+from app.utils.aws_utils import get_s3_resource, upload_json, download_file 
 
 
 class BaseImage(BaseModel):

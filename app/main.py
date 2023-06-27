@@ -8,23 +8,16 @@ from dotenv import load_dotenv
 import numpy as np
 import datasets
 
-from .models.request import Request
-from .models.response import Response
-from .sampler.sampler import sample
-from .models.image import Image, InferenceParameters, ImageProvider, GenerateImagesRequest, GeneratedImagesResponse
+from app.models.request import Request
+from app.models.response import Response
+from app.sampler.sampler import sample
+from app.models.image import InferenceParameters, ImageProvider
 
-# create logger
-# logger = logging.getLogger(__name__)
-# logger.setLevel(logging.DEBUG)
 
 app = FastAPI()
 
-# load datasets
-load_dotenv('hf.env')
-load_dotenv('aws.env')
-load_dotenv('backend.env')
+load_dotenv()
         
-
 hf_dataset = os.getenv("HF_DATASET")
 hf_dataset = datasets.load_dataset(hf_dataset)
 
